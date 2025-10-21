@@ -87,36 +87,9 @@ services:
     entrypoint: /bin/sh
     command:
       - "-c"
-      - |
-        # Wait for postgres to be ready
-        until nc -z postgres 5432; do
-          echo "Waiting for postgres..."
-          sleep 2
-        done
-        echo "Postgres is ready, starting import..."
-
-        # Import credentials if any exist
-        if [ -d /backup/credentials ] && [ "$(ls -A /backup/credentials)" ]; then
-          echo "Importing credentials..."
-          n8n import:credentials --separate --input=/backup/credentials || echo "No credentials to import or import failed"
-        else
-          echo "No credentials found to import"
-        fi
-
-        # Import workflows if any exist
-        if [ -d /backup/workflows ] && [ "$(ls -A /backup/workflows)" ]; then
-          echo "Importing workflows..."
-          n8n import:workflow --separate --input=/backup/workflows || echo "No workflows to import or import failed"
-        else
-          echo "No workflows found to import"
-        fi
-
-        echo "Import process completed successfully"
+      - "n8n import:credentials --separate --input=/backup/credentials && n8n import:workflow --separate --input=/backup/workflows"
     volumes:
       - ./n8n/backup:/backup
-    depends_on:
-      postgres:
-        condition: service_healthy
 
   n8n:
     <<: *service-n8n

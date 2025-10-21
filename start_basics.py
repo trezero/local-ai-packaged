@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """
-start_services.py
+start_basics.py
 
-This script starts the Supabase stack first, waits for it to initialize, and then starts
-the local AI stack. Both stacks use the same Docker Compose project name ("localai")
+This script starts only the basic services needed for development:
+- Supabase (full stack)
+- PostgreSQL
+- n8n
+- Neo4j
+- SearXNG
+
+Both stacks use the same Docker Compose project name ("localai")
 so they appear together in Docker Desktop.
 """
 
@@ -13,7 +19,6 @@ import shutil
 import time
 import argparse
 import platform
-import sys
 
 def run_command(cmd, cwd=None):
     """Run a shell command and print it."""
@@ -62,13 +67,26 @@ def prepare_supabase_env():
     print("Copying .env in root to .env in supabase/docker...")
     shutil.copyfile(env_example_path, env_path)
 
-def stop_existing_containers(profile=None):
-    print("Stopping and removing existing containers for the unified project 'localai'...")
-    cmd = ["docker", "compose", "-p", "localai"]
-    if profile and profile != "none":
-        cmd.extend(["--profile", profile])
-    cmd.extend(["-f", "docker-compose.yml", "down"])
-    run_command(cmd)
+def stop_existing_containers():
+    """Stop and remove existing containers for the basic services."""
+    print("Stopping existing basic service containers...")
+
+    # Stop Supabase stack
+    try:
+        run_command(["docker", "compose", "-p", "localai", "-f", "supabase/docker/docker-compose.yml", "down"])
+    except subprocess.CalledProcessError:
+        print("No Supabase containers to stop or error occurred.")
+
+    # Stop only the basic services from the main stack
+    basic_services = ["postgres", "n8n", "neo4j", "searxng"]
+    for service in basic_services:
+        try:
+            cmd = ["docker", "compose", "-p", "localai", "-f", "docker-compose.yml"]
+            cmd.extend(["-f", "docker-compose.override.private.yml"])
+            cmd.extend(["stop", service])
+            run_command(cmd)
+        except subprocess.CalledProcessError:
+            print(f"No {service} container to stop or error occurred.")
 
 def start_supabase(environment=None, retries=3):
     """Start the Supabase services (using its compose file)."""
@@ -91,19 +109,32 @@ def start_supabase(environment=None, retries=3):
                 print(f"\nFailed after {retries} attempts.")
                 raise
 
-def start_local_ai(profile=None, environment=None):
-    """Start the local AI services (using its compose file)."""
-    print("Starting local AI services...")
-    cmd = ["docker", "compose", "-p", "localai"]
-    if profile and profile != "none":
-        cmd.extend(["--profile", profile])
-    cmd.extend(["-f", "docker-compose.yml"])
+def start_basic_services(environment=None, retries=3):
+    """Start only the basic services: postgres, n8n, neo4j, searxng."""
+    print("Starting basic services (postgres, n8n, neo4j, searxng)...")
+
+    # List of services to start
+    basic_services = ["postgres", "n8n", "neo4j", "searxng"]
+
+    cmd = ["docker", "compose", "-p", "localai", "-f", "docker-compose.yml"]
     if environment and environment == "private":
         cmd.extend(["-f", "docker-compose.override.private.yml"])
     if environment and environment == "public":
         cmd.extend(["-f", "docker-compose.override.public.yml"])
-    cmd.extend(["up", "-d"])
-    run_command(cmd)
+    cmd.extend(["up", "-d"] + basic_services)
+
+    # Retry logic for network issues
+    for attempt in range(retries):
+        try:
+            run_command(cmd)
+            return  # Success, exit the function
+        except subprocess.CalledProcessError:
+            if attempt < retries - 1:
+                print(f"\nAttempt {attempt + 1} failed. Retrying in 5 seconds...")
+                time.sleep(5)
+            else:
+                print(f"\nFailed after {retries} attempts.")
+                raise
 
 def generate_searxng_secret_key():
     """Generate a secret key for SearXNG based on the current platform."""
@@ -159,11 +190,6 @@ def generate_searxng_secret_key():
         print("You may need to manually generate the secret key using the commands:")
         print("  - Linux: sed -i \"s|ultrasecretkey|$(openssl rand -hex 32)|g\" searxng/settings.yml")
         print("  - macOS: sed -i '' \"s|ultrasecretkey|$(openssl rand -hex 32)|g\" searxng/settings.yml")
-        print("  - Windows (PowerShell):")
-        print("    $randomBytes = New-Object byte[] 32")
-        print("    (New-Object Security.Cryptography.RNGCryptoServiceProvider).GetBytes($randomBytes)")
-        print("    $secretKey = -join ($randomBytes | ForEach-Object { \"{0:x2}\" -f $_ })")
-        print("    (Get-Content searxng/settings.yml) -replace 'ultrasecretkey', $secretKey | Set-Content searxng/settings.yml")
 
 def check_and_fix_docker_compose_for_searxng():
     """Check and modify docker-compose.yml for SearXNG first run."""
@@ -234,9 +260,7 @@ def check_and_fix_docker_compose_for_searxng():
         print(f"Error checking/modifying docker-compose.yml for SearXNG: {e}")
 
 def main():
-    parser = argparse.ArgumentParser(description='Start the local AI and Supabase services.')
-    parser.add_argument('--profile', choices=['cpu', 'gpu-nvidia', 'gpu-amd', 'none'], default='cpu',
-                      help='Profile to use for Docker Compose (default: cpu)')
+    parser = argparse.ArgumentParser(description='Start only basic services: Supabase, PostgreSQL, n8n, Neo4j, and SearXNG.')
     parser.add_argument('--environment', choices=['private', 'public'], default='private',
                       help='Environment to use for Docker Compose (default: private)')
     args = parser.parse_args()
@@ -248,7 +272,8 @@ def main():
     generate_searxng_secret_key()
     check_and_fix_docker_compose_for_searxng()
 
-    stop_existing_containers(args.profile)
+    # Stop existing containers (only the ones we're managing)
+    stop_existing_containers()
 
     # Start Supabase first
     start_supabase(args.environment)
@@ -257,8 +282,19 @@ def main():
     print("Waiting for Supabase to initialize...")
     time.sleep(10)
 
-    # Then start the local AI services
-    start_local_ai(args.profile, args.environment)
+    # Then start the basic services
+    start_basic_services(args.environment)
+
+    print("\n" + "="*60)
+    print("Basic services started successfully!")
+    print("="*60)
+    print("\nRunning services:")
+    print("  - Supabase Studio:  http://localhost:54323")
+    print("  - PostgreSQL:       localhost:5435")
+    print("  - n8n:              http://localhost:5678")
+    print("  - Neo4j Browser:    http://localhost:7474")
+    print("  - SearXNG:          http://localhost:8081")
+    print("="*60)
 
 if __name__ == "__main__":
     main()

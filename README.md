@@ -133,6 +133,10 @@ Before running the services, you need to set up your environment variables for S
 
 The project includes a `start_services.py` script that handles starting both the Supabase and local AI services. The script accepts a `--profile` flag to specify which GPU configuration to use.
 
+For a simpler setup that only starts the basic services (Supabase, PostgreSQL, n8n, Neo4j, and SearXNG), use `start_basics.py` instead.
+
+To stop all running services, use the `stop_all.py` script (see [Stopping Services](#stopping-services) below).
+
 ### For Nvidia GPU users
 
 ```bash
@@ -287,7 +291,13 @@ you copied in a previous step.
 To open n8n at any time, visit <http://localhost:5678/> in your browser.
 To open Open WebUI at any time, visit <http://localhost:3000/>.
 
-With your n8n instance, you’ll have access to over 400 integrations and a
+**To stop all services**, simply run:
+```bash
+python3 stop_all.py
+```
+See the [Stopping Services](#stopping-services) section below for more options.
+
+With your n8n instance, you'll have access to over 400 integrations and a
 suite of basic and advanced AI nodes such as
 [AI Agent](https://docs.n8n.io/integrations/builtin/cluster-nodes/root-nodes/n8n-nodes-langchain.agent/),
 [Text classifier](https://docs.n8n.io/integrations/builtin/cluster-nodes/root-nodes/n8n-nodes-langchain.text-classifier/),
@@ -301,19 +311,47 @@ language model and Qdrant as your vector store.
 > combines robust components that work well together for proof-of-concept
 > projects. You can customize it to meet your specific needs
 
+## Stopping Services
+
+To stop all running containers associated with this project, use the `stop_all.py` script:
+
+```bash
+# Stop all services (default - stops all profiles)
+python3 stop_all.py
+
+# Stop all services and check for any remaining containers
+python3 stop_all.py --check-remaining
+
+# Stop only containers from a specific profile
+python3 stop_all.py --profile cpu
+python3 stop_all.py --profile gpu-nvidia
+python3 stop_all.py --profile gpu-amd
+```
+
+The script will automatically detect and stop:
+- All Supabase containers (studio, kong, auth, database, storage, etc.)
+- All local AI stack containers (n8n, PostgreSQL, Ollama, Open WebUI, Flowise, Qdrant, Neo4j, SearXNG, Langfuse, Caddy, Redis, ClickHouse, MinIO)
+- Containers from all profiles (cpu, gpu-nvidia, gpu-amd)
+
+**Features:**
+- Automatic project name detection (no need to specify the Docker Compose project name)
+- Stops both Supabase and local AI stacks together
+- Optional verification to check for any remaining containers with `--check-remaining`
+- Safe to run even if no containers are running
+
 ## Upgrading
 
 To update all containers to their latest versions (n8n, Open WebUI, etc.), run these commands:
 
 ```bash
 # Stop all services
-docker compose -p localai -f docker-compose.yml --profile <your-profile> down
+python3 stop_all.py
 
 # Pull latest versions of all containers
-docker compose -p localai -f docker-compose.yml --profile <your-profile> pull
+docker compose pull
 
 # Start services again with your desired profile
-python start_services.py --profile <your-profile>
+python3 start_services.py --profile <your-profile>
 ```
 
 Replace `<your-profile>` with one of: `cpu`, `gpu-nvidia`, `gpu-amd`, or `none`.

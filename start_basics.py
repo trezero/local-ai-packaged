@@ -49,7 +49,7 @@ def clone_supabase_repo():
         if status_result.stdout.strip():
             print("Local changes detected, stashing them...")
             run_command(["git", "stash"])
-            run_command(["git", "pull"])
+            run_command(["git", "pull", "--rebase=false"])
             print("Attempting to reapply stashed changes...")
             try:
                 run_command(["git", "stash", "pop"])
@@ -57,7 +57,7 @@ def clone_supabase_repo():
                 print("Warning: Could not automatically reapply stashed changes.")
                 print("Your changes are saved in the stash. Use 'git stash list' to view them.")
         else:
-            run_command(["git", "pull"])
+            run_command(["git", "pull", "--rebase=false"])
         os.chdir("..")
 
 def prepare_supabase_env():
